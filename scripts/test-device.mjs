@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 
 const source = readFileSync(new URL('../app/device.js', import.meta.url), 'utf8');
-function harness() {
+function harness({ systeminfo, tvwindow } = {}) {
   let now = 0, next = 0;
   const timers = new Map(), requests = [], launches = [];
   const application = {
@@ -13,7 +13,7 @@ function harness() {
     getAppsInfo: (ok, fail) => requests.push({ ok, fail }),
     launch: (id, ok, fail) => launches.push({ id, ok, fail })
   };
-  const window = { tizen: { application } };
+  const window = { tizen: { application, systeminfo, tvwindow } };
   vm.runInNewContext(source, {
     window, tizen: window.tizen,
     setTimeout: (callback, delay) => { const id = ++next; timers.set(id, { callback, at: now + delay }); return id; },
@@ -79,3 +79,41 @@ test('launch keeps its eight-second deadline independently of discovery', () => 
   h.launches[0].ok();
   assert.equal(results.length, 1);
 });
+
+test('launchApp routes HDMI targets to source selection and viewer launch', () => {
+  let selectedSource = null;
+  const tvwindow = {
+    setSource: (src, ok) => { selectedSource = src; ok(); }
+  };
+  const systeminfo = {
+    getPropertyValue: (prop, ok) => {
+      assert.equal(prop, 'VIDEOSOURCE');
+      ok({ connected: [{ type: 'HDMI', number: 1, signal: true }] });
+    }
+  };
+  const h = harness({ systeminfo, tvwindow }), results = [];
+  h.device.launchApp('hdmi1', err => results.push(err));
+  assert.equal(selectedSource.type, 'HDMI');
+  assert.equal(selectedSource.number, 1);
+  assert.equal(h.launches.length, 1);
+  assert.equal(h.launches[0].id, 'org.tizen.tv-viewer');
+  h.launches[0].ok();
+  assert.equal(results.length, 1);
+  assert.equal(results[0], null);
+});
+
+test('hardware sources are included when system video sources are present', () => {
+  const systeminfo = {
+    getPropertyValue: (prop, ok) => {
+      ok({ connected: [{ type: 'HDMI', number: 1 }, { type: 'HDMI', number: 2 }] });
+    }
+  };
+  const h = harness({ systeminfo });
+  let apps;
+  h.device.apps((error, value) => { assert.equal(error, null); apps = value; });
+  h.requests[0].ok([]);
+  assert.equal(apps.length, 2);
+  assert.equal(apps.find(a => a.appId === 'hdmi1').name, 'RPi');
+  assert.equal(apps.find(a => a.appId === 'hdmi2').name, 'USB-C');
+});
+

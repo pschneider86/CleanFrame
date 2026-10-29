@@ -24,7 +24,11 @@
     { id: 'sbs', name: 'SBS On Demand', mark: true, appId: 'OyE7OuxlUi.SBSOnDemand' },
     { id: 'applemusic', name: 'Apple Music', mark: true, appId: 'org.tizen.apple.apple-music' }
   ];
-  var PRIMARY = PRIMARY_APPS.map(function (a) { return a.id; }), APPS = PRIMARY_APPS.slice(), ALPHA = [];
+  var HARDWARE_SOURCES = [
+    { id: 'hdmi1', name: 'RPi', mark: true, appId: 'hdmi1', brand: 'hdmi' },
+    { id: 'hdmi2', name: 'USB-C', mark: true, appId: 'hdmi2', brand: 'hdmi' }
+  ];
+  var PRIMARY = PRIMARY_APPS.map(function (a) { return a.id; }), APPS = PRIMARY_APPS.concat(HARDWARE_SOURCES), ALPHA = [];
   var WALLS = window.CleanFrameWallpapers || [{ id: 'misty', name: 'Misty coast', tone: 'light', ut: { tr: 'mist', br: 'mist' }, frostVeil: .20 }];
   var ADAPTIVE_INK = window.CleanFrameAdaptiveInk || {};
   WALLS.forEach(function (w) { w.ut = w.ut || { tr: 'light', br: 'light' }; w.frostVeil = w.frostVeil || .12; });
@@ -331,7 +335,7 @@
     var legacyList = s.theme === 'list', h = [], recent = [], records = Array.isArray(s.appRecords) ? s.appRecords : [];
     records.slice(0, 256).forEach(function (a) {
       if (!a || !safeId(a.id) || !safeId(a.appId) || typeof a.name !== 'string' || !a.name.trim() || app(a.id)) return;
-      APPS.push({ id: a.id, appId: a.appId, name: a.name.slice(0, 160), brand: ['hbomax', 'spotify', 'tubi'].indexOf(a.brand) >= 0 ? a.brand : '', mark: ['hbomax', 'spotify', 'tubi'].indexOf(a.brand) >= 0, icon: safeIcon(a.icon) });
+      APPS.push({ id: a.id, appId: a.appId, name: a.name.slice(0, 160), brand: ['hbomax', 'spotify', 'tubi', 'hdmi'].indexOf(a.brand) >= 0 ? a.brand : '', mark: ['hbomax', 'spotify', 'tubi', 'hdmi'].indexOf(a.brand) >= 0, icon: safeIcon(a.icon) });
     });
     (Array.isArray(s.home) ? s.home : Array.isArray(s.dock) ? s.dock : []).forEach(function (id) {
       if (!safeId(id) || h.indexOf(id) >= 0 || h.length >= CAP) return;
@@ -1056,8 +1060,8 @@
   }
 
   function clockText() {
-    var d = new Date(), h = d.getHours() % 12 || 12, m = d.getMinutes();
-    return h + ':' + (m < 10 ? '0' : '') + m;
+    var d = new Date(), h = d.getHours(), m = d.getMinutes();
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
   }
   function clockHtml() {
     var text = clockText(), metrics = fontMetrics[homeFont()];

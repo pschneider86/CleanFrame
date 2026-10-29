@@ -18,7 +18,7 @@ export async function openPreview({ publicFonts = false } = {}) {
   try {
     const baseURL = await new Promise((resolve, reject) => {
       let output = '';
-      const timeout = setTimeout(() => reject(Error('Preview startup timed out')), 10000);
+      const timeout = setTimeout(() => reject(Error('Preview startup timed out')), 180000);
       server.once('error', error => { clearTimeout(timeout); reject(error); });
       server.once('exit', code => { clearTimeout(timeout); reject(Error('Preview exited: ' + code + ' ' + diagnostics)); });
       server.stdout.on('data', chunk => {

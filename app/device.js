@@ -6,7 +6,8 @@
     disneyplus: 'MCmYXNxgcu.DisneyPlus', youtube: '9Ur5IzDKqV.TizenYouTube',
     appletv: 'com.samsung.tv.aria-video', primevideo: 'org.tizen.primevideo',
     abciview: 'mWK87Xghap.ABCiview', sbs: 'OyE7OuxlUi.SBSOnDemand',
-    applemusic: 'org.tizen.apple.apple-music'
+    applemusic: 'org.tizen.apple.apple-music',
+    hdmi1: 'hdmi1', hdmi2: 'hdmi2'
   };
   var STREAMING = ['as6cYRgkPy.Binge', '73iTZRTc34.Stan', '5b8c3eb16b.BeamCTVDev',
     'cj37Ni3qXM.HBONow', 'LBUAQX1exg.Hulu', 'gzcc4LRFBF.Peacock', 'rJyOSqC6Up.CBSAllAccess',
@@ -37,9 +38,59 @@
     function finish(err, value) { if (finished) return; finished = true; clearTimeout(timer); done(err, value); }
     return finish;
   }
+  function launchSource(portNumber, finish) {
+    function openViewer() {
+      api().launch('org.tizen.tv-viewer', function () { finish(null); }, function (viewerErr) {
+        try {
+          api().getCurrentApplication().exit();
+          finish(null);
+        } catch (exitErr) {
+          finish(failure(viewerErr));
+        }
+      });
+    }
+    try {
+      if (window.tizen && window.tizen.tvwindow) {
+        if (window.tizen.systeminfo) {
+          window.tizen.systeminfo.getPropertyValue('VIDEOSOURCE', function (videoSource) {
+            var sources = (videoSource.connected || []).concat(videoSource.disconnected || []);
+            var target = null, i;
+            for (i = 0; i < sources.length; i++) {
+              if (sources[i].type === 'HDMI' && sources[i].number === portNumber) {
+                target = sources[i];
+                break;
+              }
+            }
+            if (target) {
+              window.tizen.tvwindow.setSource(target, function () {
+                openViewer();
+              }, function () {
+                openViewer();
+              });
+            } else {
+              openViewer();
+            }
+          }, function () {
+            openViewer();
+          });
+        } else {
+          openViewer();
+        }
+      } else {
+        openViewer();
+      }
+    } catch (err) {
+      finish(failure(err));
+    }
+  }
   function launchApp(id, done) {
     if (!api()) { unavailable(done); return; }
     var finish = bounded(done);
+    var hdmiMatch = /^(?:source[._-])?hdmi[._-]?(\d+)$/i.exec(id);
+    if (hdmiMatch) {
+      launchSource(parseInt(hdmiMatch[1], 10), finish);
+      return;
+    }
     try { api().launch(id, function () { finish(null); }, function (err) { finish(failure(err)); }); }
     catch (err) { finish(failure(err)); }
   }
@@ -58,6 +109,7 @@
   }
   function home(done) { launchApp('com.samsung.tv.csfs', done); }
   function settings(done) { launchApp('com.samsung.tv.coba.setting', done); }
+  var SOURCE_NAMES = { 1: 'RPi', 2: 'USB-C' };
   function apps(done) {
     if (!api()) { unavailable(done); return; }
     // Large installed catalogues can take longer than a launch response.
@@ -75,8 +127,46 @@
           seen[a.id] = true;
           result.push({ appId: a.id, name: a.name, brand: known[a.id] || EXTRA_BRANDS[a.id] || '', icon: a.iconPath || '', rank: primary ? Object.keys(IDS).indexOf(known[a.id]) : (stream ? 20 : 30) });
         });
-        result.sort(function (a, b) { return a.rank - b.rank || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
-        finish(null, result);
+        function addSourcesAndFinish() {
+          result.sort(function (a, b) { return a.rank - b.rank || a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+          finish(null, result);
+        }
+        if (window.tizen && window.tizen.systeminfo) {
+          try {
+            window.tizen.systeminfo.getPropertyValue('VIDEOSOURCE', function (videoSource) {
+              var sources = (videoSource.connected || []).concat(videoSource.disconnected || []);
+              sources.forEach(function (s) {
+                if (s.type === 'HDMI' && s.number && !seen['hdmi' + s.number]) {
+                  seen['hdmi' + s.number] = true;
+                  result.push({
+                    appId: 'hdmi' + s.number,
+                    name: SOURCE_NAMES[s.number] || ('HDMI ' + s.number),
+                    brand: 'hdmi',
+                    icon: '',
+                    rank: 10 + s.number
+                  });
+                }
+              });
+              if (!seen.hdmi1) {
+                seen.hdmi1 = true;
+                result.push({ appId: 'hdmi1', name: 'RPi', brand: 'hdmi', icon: '', rank: 11 });
+              }
+              if (!seen.hdmi2) {
+                seen.hdmi2 = true;
+                result.push({ appId: 'hdmi2', name: 'USB-C', brand: 'hdmi', icon: '', rank: 12 });
+              }
+              addSourcesAndFinish();
+            }, function () {
+              if (!seen.hdmi1) { seen.hdmi1 = true; result.push({ appId: 'hdmi1', name: 'RPi', brand: 'hdmi', icon: '', rank: 11 }); }
+              if (!seen.hdmi2) { seen.hdmi2 = true; result.push({ appId: 'hdmi2', name: 'USB-C', brand: 'hdmi', icon: '', rank: 12 }); }
+              addSourcesAndFinish();
+            });
+          } catch (e) {
+            addSourcesAndFinish();
+          }
+        } else {
+          addSourcesAndFinish();
+        }
       }, function (err) { finish(failure(err)); });
     } catch (err) { finish(failure(err)); }
   }
